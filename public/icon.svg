@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- 3D Layer Drop Shadow -->
+    <filter id="layer-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.9"/>
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#E5C158" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <!-- BASE LAYER: Solid Black Background -->
+  <rect width="512" height="512" rx="115" fill="#090A0F"/>
+
+  <!-- ICON EMBLEM GROUP -->
+  <g filter="url(#layer-shadow)">
+    <!-- MIDDLE LAYER: White Structural Brackets [ ] -->
+    <path d="M 124 164 L 92 164 L 92 348 L 124 348" fill="none" stroke="#FFFFFF" stroke-width="16" stroke-linecap="square" stroke-linejoin="miter"/>
+    <path d="M 388 164 L 420 164 L 420 348 L 388 348" fill="none" stroke="#FFFFFF" stroke-width="16" stroke-linecap="square" stroke-linejoin="miter"/>
+
+    <!-- TOP LAYER: Solid Gold Core Brackets -->
+    <path d="M 124 164 L 92 164 L 92 348 L 124 348" fill="none" stroke="#E5C158" stroke-width="8" stroke-linecap="square" stroke-linejoin="miter"/>
+    <path d="M 388 164 L 420 164 L 420 348 L 388 348" fill="none" stroke="#E5C158" stroke-width="8" stroke-linecap="square" stroke-linejoin="miter"/>
+
+    <!-- MIDDLE LAYER: White Underlayer for SC (Ubuntu Font) -->
+    <text x="256" y="312" 
+          font-family="'Ubuntu', sans-serif" 
+          font-size="155" 
+          font-weight="700" 
+          letter-spacing="2" 
+          text-anchor="middle" 
+          fill="none" 
+          stroke="#FFFFFF" 
+          stroke-width="8" 
+          stroke-linejoin="round">SC</text>
+
+    <!-- TOP LAYER: Solid Gold Monogram for SC (Ubuntu Font) -->
+    <text x="256" y="312" 
+          font-family="'Ubuntu', sans-serif" 
+          font-size="155" 
+          font-weight="700" 
+          letter-spacing="2" 
+          text-anchor="middle" 
+          fill="#E5C158">SC</text>
+  </g>
+</svg>

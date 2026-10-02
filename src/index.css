@@ -1,0 +1,31 @@
+@import "tailwindcss";
+@config "../tailwind.config.js";
+
+@layer base {
+  body {
+    @apply bg-codex-bg text-codex-text font-sans antialiased;
+    background-attachment: fixed;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font-family: inherit;
+  }
+
+  .sc-cover-frame {
+    border: 14px solid transparent;
+    border-image-slice: 12%;
+    border-image-width: 14px;
+    border-image-repeat: stretch;
+  }
+
+  .sc-cover-frame--read {
+    border-image-source: url('/archive-cover-front.jpg');
+  }
+
+  .sc-cover-frame--write {
+    border-image-source: url('/archive-cover-back.jpg');
+  }
+}
