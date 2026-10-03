@@ -34,7 +34,11 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,md,png,svg,woff2}']
+        // Precache app files; cache printed page scans on first view
+        globPatterns: ['**/*.{js,css,html,ico,md,png,svg,woff2,json}'],
+        runtimeCaching: [
+          { urlPattern: /\/print\/p-\d+\.jpg$/, handler: 'CacheFirst', options: { cacheName: 'archive-print-pages' } }
+        ]
       }
     })
   ]

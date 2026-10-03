@@ -2,6 +2,22 @@
 @config "../tailwind.config.js";
 
 @layer base {
+  /* Smooth, steady scrolling; anchored targets keep a margin; reduced-motion users get instant jumps */
+  html {
+    scroll-behavior: smooth;
+    overscroll-behavior-y: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
+
+  [id] {
+    scroll-margin-top: 1rem;
+  }
+
   body {
     @apply bg-codex-bg text-codex-text font-sans antialiased;
     background-attachment: fixed;
@@ -14,6 +30,7 @@
     font-family: inherit;
   }
 
+  /* Cover-art border frames: front cover for Read, back cover for Write */
   .sc-cover-frame {
     border: 14px solid transparent;
     border-image-slice: 12%;
@@ -29,3 +46,112 @@
     border-image-source: url('/archive-cover-back.jpg');
   }
 }
+
+/* System Term links and definition popup */
+.term-link {
+  color: inherit;
+  font: inherit;
+  cursor: help;
+  text-decoration: underline dotted #806f36;
+  text-underline-offset: 4px;
+}
+
+.term-link:hover,
+.term-link:focus-visible {
+  color: #e5c158;
+  text-decoration-style: solid;
+}
+
+.term-popup {
+  position: fixed;
+  z-index: 50;
+  display: block;
+  width: min(22rem, calc(100vw - 1rem));
+  padding: 0.75rem 0.9rem;
+  border: 1px solid #806f36;
+  background: #11141d;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.6);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: #e2e8f0;
+  pointer-events: none;
+}
+
+.term-popup__title { display: block; color: #e5c158; margin-bottom: 0.25rem; }
+.term-popup__hint { display: block; margin-top: 0.4rem; font-size: 0.6875rem; color: #8b93a7; }
+
+/* Page divider with its [OC-...] identifier */
+.page-break {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 2.5rem 0 1.5rem;
+  padding: 0.35rem 0;
+  border-top: 1px dashed #806f36;
+  border-bottom: 1px dashed #303642;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  color: #e5c158;
+}
+
+.page-break__print {
+  padding: 0.15rem 0.5rem;
+  border: 1px solid #2b3245;
+  color: #9aa3b8;
+}
+
+.page-break__print:hover { border-color: #e5c158; color: #e5c158; }
+
+/* Brief highlight on a jump target */
+.flash-target { animation: flash-target 1.6s ease-out; }
+
+@keyframes flash-target {
+  from { background: rgb(229 193 88 / 0.35); }
+  to { background: transparent; }
+}
+
+/* Floating return to the [TOPOLOGY INTERFACE] */
+.return-button {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 40;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid #e5c158;
+  background: #090a0f;
+  color: #e5c158;
+  font-size: 0.75rem;
+  font-weight: 700;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.6);
+}
+
+.return-button:hover { background: #e5c158; color: #090a0f; }
+
+/* Printed view previous/next buttons */
+.viewer-button {
+  padding: 0.35rem 0.8rem;
+  border: 1px solid #2b3245;
+}
+
+.viewer-button:hover:not(:disabled) { border-color: #e5c158; color: #e5c158; }
+.viewer-button:disabled { opacity: 0.4; }
+
+/* End-of-Archive link to the Write tab */
+.codex-cta {
+  margin: 2.5rem auto 1rem;
+  max-width: 36rem;
+  padding: 1.25rem;
+  border: 1px solid #806f36;
+  text-align: center;
+}
+
+.codex-cta__button {
+  margin-top: 0.75rem;
+  padding: 0.6rem 1.2rem;
+  background: #e5c158;
+  color: #090a0f;
+  font-weight: 700;
+}
+
+.codex-cta__button:hover { background: #f1d27a; }

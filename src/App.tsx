@@ -61,6 +61,15 @@ export default function App() {
   const [entryNotes, setEntryNotes] = useState('');
   const [decryptedRecords, setDecryptedRecords] = useState<Record<number, string>>({});
 
+  const beginEntry = () => {
+    setActiveSection('writing');
+    requestAnimationFrame(() => {
+      const target = document.getElementById('sc-write-start');
+      target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      target?.focus({ preventScroll: true });
+    });
+  };
+
   const vaultConfig = useLiveQuery(() => db.vaultConfig.toCollection().first());
   const entries = useLiveQuery(() => db.entries.toArray());
   const sequenceGuidance = getSequencePrompts(entrySequence);
@@ -375,7 +384,7 @@ export default function App() {
   };
 
   return (
-    <main className="min-h-screen bg-[#090a0f] text-[#e0e6ed] p-6 max-w-4xl mx-auto space-y-8 font-sans">
+    <main className={`min-h-screen bg-[#090a0f] text-[#e0e6ed] p-6 mx-auto space-y-8 font-sans ${activeSection === 'archive' ? 'max-w-none' : 'max-w-4xl'}`}>
       {/* Brand, backup, and session controls */}
       <header className="border-b border-[#202530] pb-4 flex justify-between items-center">
         <div>
@@ -457,13 +466,13 @@ export default function App() {
 
       {activeSection === 'archive' && (
         <Suspense fallback={<p role="status" className="text-sm text-gray-400">Opening archive reader…</p>}>
-          <ArchiveReader />
+          <ArchiveReader onBeginEntry={beginEntry} />
         </Suspense>
       )}
 
       {/* New [SC] setup */}
       {activeSection === 'writing' && !vaultConfig && (
-        <section className="sc-cover-frame sc-cover-frame--write bg-[#11141d] p-6 space-y-6">
+        <section id="sc-write-start" tabIndex={-1} className="sc-cover-frame sc-cover-frame--write bg-[#11141d] p-6 space-y-6">
           <div className="flex justify-between items-center">
             <h2 className="text-lg font-bold text-[#E5C158]">Create your [SOVEREIGN CODEX]</h2>
             <label className="text-xs text-[#E5C158] underline cursor-pointer">
@@ -531,7 +540,7 @@ export default function App() {
 
       {/* Locked [SC]: password access or recovery phrase */}
       {activeSection === 'writing' && vaultConfig && !masterKey && (
-        <section className="sc-cover-frame sc-cover-frame--write bg-[#11141d] p-6 max-w-md mx-auto space-y-4">
+        <section id="sc-write-start" tabIndex={-1} className="sc-cover-frame sc-cover-frame--write bg-[#11141d] p-6 max-w-md mx-auto space-y-4">
           <div className="flex border-b border-[#202530] text-xs">
             <button
               onClick={() => setActiveTab('unlock')}
@@ -600,7 +609,7 @@ export default function App() {
 
       {/* Open [SC]: credentials, entry writing, and archive reading */}
       {activeSection === 'writing' && masterKey && (
-        <div className="sc-cover-frame sc-cover-frame--write space-y-8 p-4">
+        <div id="sc-write-start" tabIndex={-1} className="sc-cover-frame sc-cover-frame--write space-y-8 p-4">
           <details className="border-b border-[#202530] pb-3 text-xs">
             <summary className="cursor-pointer select-none text-gray-400 hover:text-[#E5C158]">
               [SC] access & signature <span className="ml-2 font-mono text-gray-500">[{citizenInitials || '__'}]</span>

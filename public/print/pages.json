@@ -1,0 +1,173 @@
+[
+ {
+  "n": 1,
+  "title": "Front cover"
+ },
+ {
+  "n": 2,
+  "title": "Blank"
+ },
+ {
+  "n": 3,
+  "start": "The_[SYSTEM]_Archive",
+  "title": "Title page"
+ },
+ {
+  "n": 4,
+  "start": "COPYRIGHT NOTICE",
+  "title": "Legal"
+ },
+ {
+  "n": 5,
+  "id": "TOPOLOGY INTERFACE",
+  "start": "[TOPOLOGY INTERFACE]"
+ },
+ {
+  "n": 6,
+  "title": "[SIGIL]"
+ },
+ {
+  "n": 7,
+  "id": "OC-KN-000",
+  "label": "1/1",
+  "start": "The_[SYSTEM]_Archive"
+ },
+ {
+  "n": 8,
+  "id": "OC-C-001",
+  "label": "1/2",
+  "start": "THE_[CONSTITUTION]"
+ },
+ {
+  "n": 9,
+  "id": "OC-C-001",
+  "label": "2/2",
+  "start": "ARTICLE 2: THE [SIGIL]"
+ },
+ {
+  "n": 10,
+  "id": "OC-ST-002",
+  "label": "1/2",
+  "start": "THE_[SIX TENETS]"
+ },
+ {
+  "n": 11,
+  "id": "OC-ST-002",
+  "label": "2/2",
+  "start": "6. CURIOSITY"
+ },
+ {
+  "n": 12,
+  "id": "OC-FF-003",
+  "label": "1/10",
+  "start": "THE_[FOUNDATIONAL FRAMEWORK]"
+ },
+ {
+  "n": 13,
+  "id": "OC-FF-003",
+  "label": "2/10",
+  "start": "THE INTEGRATION SEQUENCE"
+ },
+ {
+  "n": 14,
+  "id": "OC-FF-003",
+  "label": "3/10",
+  "start": "Level 2: Architecture"
+ },
+ {
+  "n": 15,
+  "id": "OC-FF-003",
+  "label": "4/10",
+  "start": "Level 3: Distribution"
+ },
+ {
+  "n": 16,
+  "id": "OC-FF-003",
+  "label": "5/10",
+  "start": "Level 4: Synthesis"
+ },
+ {
+  "n": 17,
+  "id": "OC-FF-003.NP",
+  "label": "6/10",
+  "start": "THE_[NAVIGATIONAL PROTOCOLS]"
+ },
+ {
+  "n": 18,
+  "id": "OC-FF-003.NP",
+  "label": "7/10",
+  "start": "[KINETIC GEOMETRY]"
+ },
+ {
+  "n": 19,
+  "id": "OC-FF-003.NP",
+  "label": "8/10",
+  "start": "[PROTOCOL 02"
+ },
+ {
+  "n": 20,
+  "id": "OC-FF-003.NP",
+  "label": "9/10",
+  "start": "[LOGICAL TOPOLOGY]"
+ },
+ {
+  "n": 21,
+  "id": "OC-FF-003.NP",
+  "label": "10/10",
+  "start": "[TERMINAL MECHANICS]"
+ },
+ {
+  "n": 22,
+  "start": "[END OF BASELINE ARCHITECTURE]",
+  "title": "End of Baseline Architecture"
+ },
+ {
+  "n": 23,
+  "id": "OC-ID-004",
+  "label": "1/4",
+  "start": "THE_[ITERATIVE DYNAMICS]"
+ },
+ {
+  "n": 24,
+  "id": "OC-ID-004",
+  "label": "2/4",
+  "start": "THE [ITERATIVE FORMULA]"
+ },
+ {
+  "n": 25,
+  "id": "OC-ID-004",
+  "label": "3/4",
+  "start": "Sequence B | The Proactive Template"
+ },
+ {
+  "n": 26,
+  "id": "OC-ID-004",
+  "label": "4/4",
+  "start": "THE EXPANSION LEDGER"
+ },
+ {
+  "n": 27,
+  "start": "[END OF ARCHIVE]",
+  "title": "End of Archive"
+ },
+ {
+  "n": 28,
+  "id": "SC-001",
+  "label": "1/∞",
+  "start": "[SOVEREIGN CODEX]"
+ },
+ {
+  "n": 29,
+  "id": "SC-001",
+  "label": "2/∞",
+  "start": "[. . .]"
+ },
+ {
+  "n": 30,
+  "title": "Blank"
+ },
+ {
+  "n": 31,
+  "title": "Back cover"
+ }
+]
