@@ -1,5 +1,7 @@
+// Iterative Formula entry model, prompts, and the plain-text format stored (encrypted) per entry.
 export type CodexSequence = 'A' | 'B';
 
+/** Form values for an entry before serialization. */
 export interface CodexEntryDraft {
   title: string;
   sequence?: CodexSequence;
@@ -12,6 +14,7 @@ export interface CodexEntryDraft {
 
 export const ITERATIVE_FORMULA_PROTOCOL = 'PROTOCOL 03: ITERATIVE FORMULA';
 
+/** An entry read back from its decrypted text. */
 export interface ParsedCodexEntry {
   title: string;
   sequence: CodexSequence;
@@ -24,23 +27,28 @@ export interface ParsedCodexEntry {
   protocol: string;
 }
 
+/** Maps a stored sequence label back to 'A' or 'B'. */
 export function getSequenceKeyFromLabel(label: string): CodexSequence {
   const normalized = label.toLowerCase();
   return normalized.includes('sequence b') || normalized.includes('proactive') ? 'B' : 'A';
 }
 
+/** Display label for a sequence. */
 export function getSequenceLabel(sequence: CodexSequence): string {
   return sequence === 'A' ? 'Sequence A | Reactive Template' : 'Sequence B | Proactive Template';
 }
 
+/** Uppercases and keeps at most two A-Z letters. */
 export function normalizeCitizenInitials(value: string): string {
   return value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2);
 }
 
+/** True only for exactly two A-Z letters. */
 export function isValidCitizenInitials(value: string): boolean {
   return /^[A-Z]{2}$/.test(value);
 }
 
+/** Per-sequence guidance text shown above the entry fields (wording comes from the Archive). */
 export function getSequencePrompts(sequence: CodexSequence) {
   if (sequence === 'A') {
     return {
@@ -65,6 +73,7 @@ export function getSequencePrompts(sequence: CodexSequence) {
   };
 }
 
+/** Trims fields and applies defaults. */
 export function normalizeCodexDraft(input: Partial<CodexEntryDraft>): CodexEntryDraft {
   return {
     title: (input.title ?? '').trim(),
@@ -77,6 +86,7 @@ export function normalizeCodexDraft(input: Partial<CodexEntryDraft>): CodexEntry
   };
 }
 
+/** Builds the canonical text block that gets encrypted and saved. */
 export function serializeCodexEntry(entry: Partial<CodexEntryDraft>): string {
   const normalized = normalizeCodexDraft(entry);
   const sequenceLabel = getSequenceLabel(normalized.sequence ?? 'A');
@@ -107,6 +117,7 @@ export function serializeCodexEntry(entry: Partial<CodexEntryDraft>): string {
   return blocks.join('\n');
 }
 
+/** Parses decrypted entry text; tolerant of missing or reordered sections. */
 export function parseCodexEntry(raw: string): ParsedCodexEntry {
   const lines = raw.split(/\r?\n/);
   const entry: ParsedCodexEntry = {
@@ -200,6 +211,7 @@ export function parseCodexEntry(raw: string): ParsedCodexEntry {
   return entry;
 }
 
+/** Live summary lines shown under the entry form. */
 export function buildCodexPreview(entry: Partial<CodexEntryDraft>): string[] {
   const normalized = normalizeCodexDraft(entry);
 

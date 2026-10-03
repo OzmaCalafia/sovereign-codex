@@ -1,5 +1,7 @@
+// Local IndexedDB schema (Dexie). Nothing leaves the browser.
 import Dexie, { type Table } from 'dexie';
 
+/** One saved entry; `content` is ciphertext, title/category/tags stay readable for indexing. */
 export interface EntryRecord {
   id?: number;
   title: string;
@@ -11,6 +13,7 @@ export interface EntryRecord {
   updatedAt: number;
 }
 
+/** Single row holding the wrapped keys and salt for this [SC]. */
 export interface VaultConfig {
   id?: number;
   salt: string;
@@ -20,6 +23,7 @@ export interface VaultConfig {
   createdAt: number;
 }
 
+/** Reserved log table; not written yet but kept so existing .sc backups stay compatible. */
 export interface AuditLog {
   id?: number;
   action: string;
@@ -27,6 +31,7 @@ export interface AuditLog {
   timestamp: number;
 }
 
+/** Dexie database with typed tables. */
 export class SovereignCodexDB extends Dexie {
   entries!: Table<EntryRecord, number>;
   vaultConfig!: Table<VaultConfig, number>;
@@ -46,6 +51,7 @@ export class SovereignCodexDB extends Dexie {
 
 export const db = new SovereignCodexDB();
 
+/** Deletes every table's rows in one transaction. */
 export async function wipeLocalVault(): Promise<void> {
   await db.transaction('rw', [db.entries, db.vaultConfig, db.auditLogs], async () => {
     await db.entries.clear();

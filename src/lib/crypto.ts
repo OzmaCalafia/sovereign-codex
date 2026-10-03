@@ -54,13 +54,15 @@ export async function validateBip39Seed(words: string[]): Promise<boolean> {
   return checksumBits === expectedChecksumBits;
 }
 
-/**
- * Derives key using PBKDF2
- */
+/** Copies a Uint8Array view into a standalone ArrayBuffer for WebCrypto. */
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 
+// OWASP-recommended work factor for PBKDF2-HMAC-SHA256; WebCrypto has no memory-hard KDF.
+const PBKDF2_ITERATIONS = 600_000;
+
+/** Derives an AES-GCM wrapping key from a password or seed phrase via PBKDF2. */
 async function deriveKeyFromSecret(secret: string, salt: Uint8Array): Promise<CryptoKey> {
   const encoder = new TextEncoder();
   const keyMaterial = await window.crypto.subtle.importKey(
@@ -75,7 +77,7 @@ async function deriveKeyFromSecret(secret: string, salt: Uint8Array): Promise<Cr
     {
       name: 'PBKDF2',
       salt: toArrayBuffer(salt),
-      iterations: 100000,
+      iterations: PBKDF2_ITERATIONS,
       hash: 'SHA-256',
     },
     keyMaterial,
@@ -85,6 +87,7 @@ async function deriveKeyFromSecret(secret: string, salt: Uint8Array): Promise<Cr
   );
 }
 
+/** Creates the random master encryption key (MEK) that encrypts all entries. */
 export async function generateMasterKey(): Promise<CryptoKey> {
   return window.crypto.subtle.generateKey(
     { name: 'AES-GCM', length: 256 },
@@ -93,6 +96,7 @@ export async function generateMasterKey(): Promise<CryptoKey> {
   );
 }
 
+/** Encrypts the MEK under a secret so it can be stored; returns JSON {iv, wrappedKey}. */
 export async function wrapMasterKey(masterKey: CryptoKey, secret: string, saltHex: string): Promise<string> {
   const salt = new Uint8Array(saltHex.match(/.{1,2}/g)!.map((b) => parseInt(b, 16)));
   const wrappingKey = await deriveKeyFromSecret(secret, salt);
@@ -109,6 +113,7 @@ export async function wrapMasterKey(masterKey: CryptoKey, secret: string, saltHe
   });
 }
 
+/** Reverses wrapMasterKey; throws OperationError when the secret is wrong. */
 export async function unwrapMasterKey(wrappedPayload: string, secret: string, saltHex: string): Promise<CryptoKey> {
   const salt = new Uint8Array(saltHex.match(/.{1,2}/g)!.map((b) => parseInt(b, 16)));
   const unwrappingKey = await deriveKeyFromSecret(secret, salt);
@@ -125,6 +130,7 @@ export async function unwrapMasterKey(wrappedPayload: string, secret: string, sa
   );
 }
 
+/** AES-256-GCM encrypts text with a fresh IV; returns JSON {iv, ciphertext}. */
 export async function encryptData(plaintext: string, mek: CryptoKey): Promise<string> {
   const encoder = new TextEncoder();
   const iv = window.crypto.getRandomValues(new Uint8Array(12));
@@ -140,6 +146,7 @@ export async function encryptData(plaintext: string, mek: CryptoKey): Promise<st
   });
 }
 
+/** Decrypts a payload produced by encryptData. */
 export async function decryptData(payload: string, mek: CryptoKey): Promise<string> {
   const { iv, ciphertext } = JSON.parse(payload);
   const decrypted = await window.crypto.subtle.decrypt(
@@ -151,6 +158,7 @@ export async function decryptData(payload: string, mek: CryptoKey): Promise<stri
   return new TextDecoder().decode(decrypted);
 }
 
+/** Random 16-byte PBKDF2 salt as hex. */
 export function generateSaltHex(): string {
   const salt = window.crypto.getRandomValues(new Uint8Array(16));
   return Array.from(salt).map((b) => b.toString(16).padStart(2, '0')).join('');

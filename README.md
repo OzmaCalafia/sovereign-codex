@@ -9,7 +9,7 @@ An offline-first Progressive Web App for writing and organizing a personal [SC] 
 - Wraps the master key for password and recovery-phrase access using PBKDF2.
 - Exports and imports portable `.sc` JSON backups.
 - Structures entries as Catalyst, Friction, and Parameter, with Sequence A and Sequence B guidance.
-- Provides a separate, read-only reader for the bundled core archive.
+- Provides a read-only reader for the bundled core archive, with a formatted Reader view, a Printed view of the original pages, System Term definition popups, and page identifiers.
 
 The bundled `public/archive.md` reproduces *The [SYSTEM] Archive* by Ozma Calafia. The Archive is licensed under CC BY-NC-ND 4.0; its attribution and license notice are included in the reader. This license applies to the Archive text, not automatically to the application source code.
 
@@ -30,11 +30,12 @@ npm install
 npm run dev
 ```
 
-Run the production build and lint checks:
+Run the production build, lint checks, and tests:
 
 ```bash
 npm run build
 npm run lint
+npm test
 ```
 
 ## Source link
@@ -50,8 +51,10 @@ The link appears only for an HTTPS GitHub repository URL. `.env` is excluded fro
 ## Code map
 
 - `src/App.tsx`: setup, access, backup actions, entry writing, and archive reading.
-- `src/lib/crypto.ts`: recovery phrase generation, key wrapping, and content encryption.
+- `src/lib/crypto.ts`: recovery phrase generation, key wrapping (PBKDF2, 600,000 rounds), and content encryption.
 - `src/lib/codex.ts`: Sequence A/B prompts and entry serialization/parsing.
-- `src/ArchiveReader.tsx` and `public/archive.md`: read-only source reader and the unchanged Archive text.
+- `src/lib/backup.ts`: validation of `.sc` backups before import.
+- `src/ArchiveReader.tsx`, `src/archive/`, and `src/lib/archive.ts`: the Archive reader, System Term popups, and page-break handling.
+- `public/archive.md` and `public/print/`: the unchanged Archive text, the printed page images, and `pages.json` (page identifiers and text anchors).
 - `src/db/database.ts`: IndexedDB record types, schema, and local wipe operation.
 - `src/main.tsx`: app startup, fonts, and browser storage persistence request.

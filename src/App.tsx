@@ -1,3 +1,4 @@
+// App shell: Read tab (Archive reader) and Write tab (encrypted local [SC] with entries).
 import React, { lazy, Suspense, useState, useEffect } from 'react';
 import { db, wipeLocalVault, type EntryRecord } from './db/database';
 import {
@@ -21,15 +22,18 @@ import {
   type CodexSequence,
 } from './lib/codex';
 import { sourceRepositoryUrl } from './lib/sourceRepository';
+import { BACKUP_VERSION, parseBackup } from './lib/backup';
 import { useLiveQuery } from 'dexie-react-hooks';
 
 const ArchiveReader = lazy(() => import('./ArchiveReader'));
 
+/** Message text from an unknown thrown value. */
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unknown error';
 }
 
 export default function App() {
+  // Navigation, unlock, and session state
   const [activeSection, setActiveSection] = useState<'writing' | 'archive'>('writing');
   const [activeTab, setActiveTab] = useState<'unlock' | 'recover'>('unlock');
   const [mainPassword, setMainPassword] = useState('');
@@ -61,6 +65,7 @@ export default function App() {
   const [entryNotes, setEntryNotes] = useState('');
   const [decryptedRecords, setDecryptedRecords] = useState<Record<number, string>>({});
 
+  // Used by the Archive's closing link: opens Write and focuses its first section.
   const beginEntry = () => {
     setActiveSection('writing');
     requestAnimationFrame(() => {
@@ -80,6 +85,13 @@ export default function App() {
       generateBip39Seed().then(setGeneratedSeed);
     }
   }, [vaultConfig, generatedSeed.length]);
+
+  // Decrypts and shows the stored signature, or clears it for older [SC]s that have none.
+  const loadSignature = async (mek: CryptoKey, encrypted?: string) => {
+    const initials = encrypted ? await decryptData(encrypted, mek) : '';
+    setCitizenInitials(initials);
+    setInitialsDraft(initials);
+  };
 
   // Setup and local data lifecycle
   const handleFactoryReset = async () => {
@@ -124,7 +136,7 @@ export default function App() {
       }
 
       const exportPayload = {
-        version: 1,
+        version: BACKUP_VERSION,
         exportedAt: Date.now(),
         vaultConfig: config,
         entries: allEntries,
@@ -148,6 +160,7 @@ export default function App() {
     }
   };
 
+  // Replace local data with a .sc backup after confirmation
   const handleImportVault = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -155,12 +168,7 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
-        const content = event.target?.result as string;
-        const data = JSON.parse(content);
-
-        if (!data.vaultConfig || !Array.isArray(data.entries)) {
-          throw new Error("Invalid .sc file structure.");
-        }
+        const data = parseBackup(event.target?.result as string);
 
         const confirmed = window.confirm(
           "Opening this backup replaces [SC] and its entries currently stored in this browser.\n\nContinue?"
@@ -175,7 +183,7 @@ export default function App() {
 
           await db.vaultConfig.add(data.vaultConfig);
           if (data.entries.length > 0) await db.entries.bulkAdd(data.entries);
-          if (data.auditLogs && data.auditLogs.length > 0) await db.auditLogs.bulkAdd(data.auditLogs);
+          if (data.auditLogs.length > 0) await db.auditLogs.bulkAdd(data.auditLogs);
         });
 
         alert(".sc backup opened. Enter its password to continue.");
@@ -220,6 +228,7 @@ export default function App() {
     }
   };
 
+  // Open an existing [SC] with its password
   const handleUnlock = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!vaultConfig) return;
@@ -227,14 +236,7 @@ export default function App() {
     try {
       const mek = await unwrapMasterKey(vaultConfig.wrappedMEKByPassword, mainPassword, vaultConfig.salt);
       setMasterKey(mek);
-      if (vaultConfig.encryptedSignature) {
-        const initials = await decryptData(vaultConfig.encryptedSignature, mek);
-        setCitizenInitials(initials);
-        setInitialsDraft(initials);
-      } else {
-        setCitizenInitials('');
-        setInitialsDraft('');
-      }
+      await loadSignature(mek, vaultConfig.encryptedSignature);
       setStatus(vaultConfig.encryptedSignature ? '[SC] opened.' : '[SC] opened. Add a two-letter signature.');
     } catch {
       setStatus('Invalid password.');
@@ -267,14 +269,7 @@ export default function App() {
       });
 
       setMasterKey(mek);
-      if (vaultConfig.encryptedSignature) {
-        const initials = await decryptData(vaultConfig.encryptedSignature, mek);
-        setCitizenInitials(initials);
-        setInitialsDraft(initials);
-      } else {
-        setCitizenInitials('');
-        setInitialsDraft('');
-      }
+      await loadSignature(mek, vaultConfig.encryptedSignature);
       setStatus('Access restored and password changed.');
     } catch {
       setStatus('Recovery phrase did not open [SC]. Check the words and try again.');
@@ -311,6 +306,7 @@ export default function App() {
     }
   };
 
+  // Change the login password; the recovery phrase keeps working
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!masterKey || !vaultConfig?.id) return;
@@ -373,6 +369,7 @@ export default function App() {
     }
   };
 
+  // Decrypt one entry for display on demand
   const handleDecryptRecord = async (entry: EntryRecord) => {
     if (!entry.id || !masterKey || typeof entry.content !== 'string') return;
     try {
@@ -445,6 +442,7 @@ export default function App() {
         </div>
       </header>
 
+      {/* Read / Write tab switch */}
       <nav aria-label="[SC] sections" className="flex border-b border-[#202530] text-xs">
         <button
           type="button"
@@ -464,6 +462,7 @@ export default function App() {
         </button>
       </nav>
 
+      {/* Read tab: lazy-loaded so the markdown stack loads only when needed */}
       {activeSection === 'archive' && (
         <Suspense fallback={<p role="status" className="text-sm text-gray-400">Opening archive reader…</p>}>
           <ArchiveReader onBeginEntry={beginEntry} />
@@ -610,6 +609,7 @@ export default function App() {
       {/* Open [SC]: credentials, entry writing, and archive reading */}
       {activeSection === 'writing' && masterKey && (
         <div id="sc-write-start" tabIndex={-1} className="sc-cover-frame sc-cover-frame--write space-y-8 p-4">
+          {/* Change password and edit signature */}
           <details className="border-b border-[#202530] pb-3 text-xs">
             <summary className="cursor-pointer select-none text-gray-400 hover:text-[#E5C158]">
               [SC] access & signature <span className="ml-2 font-mono text-gray-500">[{citizenInitials || '__'}]</span>
@@ -691,6 +691,7 @@ export default function App() {
             </div>
           </details>
 
+          {/* New entry form: Catalyst, Friction, Parameter */}
           <form onSubmit={handleSaveRecord} className="bg-[#11141d] p-5 rounded-lg border border-[#202530] space-y-4">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-xs font-bold uppercase tracking-wider text-[#E5C158]">New [SC] Entry</h2>
@@ -819,6 +820,7 @@ export default function App() {
             </div>
           </form>
 
+          {/* Saved entries; contents stay encrypted until opened */}
           <section className="space-y-3">
             <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400">
               [SC] Entries ({entries?.length || 0})
@@ -890,6 +892,7 @@ export default function App() {
         </div>
       )}
 
+      {/* Optional source link (set by VITE_GITHUB_REPOSITORY_URL) */}
       {sourceRepositoryUrl && (
         <footer className="border-t border-[#202530] pt-4 text-right">
           <a

@@ -1,3 +1,4 @@
+// App entry: offline fonts, persistent-storage request, React mount.
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 

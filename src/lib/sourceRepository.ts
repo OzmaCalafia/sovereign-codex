@@ -1,3 +1,4 @@
+// Optional "Review source code" footer link; only an https github.com/owner/repo URL is accepted.
 const configuredRepositoryUrl = import.meta.env.VITE_GITHUB_REPOSITORY_URL?.trim();
 
 function isGitHubRepositoryUrl(value: string | undefined): value is string {
