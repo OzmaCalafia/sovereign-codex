@@ -1,5 +1,5 @@
 // App shell: Read tab (Archive reader) and Write tab (encrypted local [SC] with entries).
-import React, { lazy, Suspense, useState, useEffect } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useRef } from 'react';
 import { db, wipeLocalVault, type EntryRecord } from './db/database';
 import {
   generateBip39Seed,
@@ -22,7 +22,16 @@ import {
   type CodexSequence,
 } from './lib/codex';
 import { sourceRepositoryUrl } from './lib/sourceRepository';
-import { BACKUP_VERSION, parseBackup } from './lib/backup';
+import {
+  BACKUP_VERSION,
+  decryptBackupPayload,
+  encryptBackupPayload,
+  parseBackup,
+  parseEncryptedBackup,
+  type BackupCredential,
+  type BackupPayload,
+  type EncryptedBackupEnvelope,
+} from './lib/backup';
 import { useLiveQuery } from 'dexie-react-hooks';
 
 const ArchiveReader = lazy(() => import('./ArchiveReader'));
@@ -49,6 +58,7 @@ export default function App() {
   const [setupInitials, setSetupInitials] = useState('');
   const [generatedSeed, setGeneratedSeed] = useState<string[]>([]);
   const [seedConfirmed, setSeedConfirmed] = useState(false);
+  const recoveryPhraseCleared = useRef(false);
 
   // Recovery state
   const [recoverySeedInput, setRecoverySeedInput] = useState('');
@@ -64,6 +74,13 @@ export default function App() {
   const [entryParameter, setEntryParameter] = useState('');
   const [entryNotes, setEntryNotes] = useState('');
   const [decryptedRecords, setDecryptedRecords] = useState<Record<number, string>>({});
+  const [backupDialog, setBackupDialog] = useState<'export' | 'import' | null>(null);
+  const [backupCredential, setBackupCredential] = useState<BackupCredential>('password');
+  const [backupSecret, setBackupSecret] = useState('');
+  const [pendingEncryptedBackup, setPendingEncryptedBackup] = useState<EncryptedBackupEnvelope | null>(null);
+  const [pendingLegacyBackup, setPendingLegacyBackup] = useState<BackupPayload | null>(null);
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [returnToImportAfterExport, setReturnToImportAfterExport] = useState(false);
 
   // Used by the Archive's closing link: opens Write and focuses its first section.
   const beginEntry = () => {
@@ -81,7 +98,7 @@ export default function App() {
 
   // Create a recovery phrase only while setting up a new [SC].
   useEffect(() => {
-    if (!vaultConfig && generatedSeed.length === 0) {
+    if (!vaultConfig && generatedSeed.length === 0 && !recoveryPhraseCleared.current) {
       generateBip39Seed().then(setGeneratedSeed);
     }
   }, [vaultConfig, generatedSeed.length]);
@@ -116,7 +133,8 @@ export default function App() {
       setCitizenInitials('');
       setInitialsDraft('');
       setSeedConfirmed(false);
-      
+      recoveryPhraseCleared.current = false;
+
       const newSeed = await generateBip39Seed();
       setGeneratedSeed(newSeed);
       setStatus('[SC] erased.');
@@ -124,26 +142,41 @@ export default function App() {
   };
 
   // Export and import portable .sc backups
-  const handleExportVault = async () => {
+  const handleExportVault = () => {
+    setBackupSecret('');
+    setBackupDialog('export');
+  };
+
+  const downloadBackup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!backupSecret) return;
+
     try {
       const config = await db.vaultConfig.toCollection().first();
       const allEntries = await db.entries.toArray();
       const logs = await db.auditLogs.toArray();
 
-      if (!config) {
-        alert("No [SC] is available to back up.");
-        return;
+      if (!config || !masterKey) throw new Error('Unlock [SC] before creating a backup.');
+      setBackupBusy(true);
+      const verifiedMasterKey = await unwrapMasterKey(config.wrappedMEKByPassword, backupSecret, config.salt);
+      const keyCheck = await encryptData('sovereign-codex:backup-key-check', masterKey);
+      if (await decryptData(keyCheck, verifiedMasterKey) !== 'sovereign-codex:backup-key-check') {
+        throw new Error('The active session key does not match the stored password key slot.');
       }
 
-      const exportPayload = {
+      const exportPayload: BackupPayload = {
         version: BACKUP_VERSION,
         exportedAt: Date.now(),
         vaultConfig: config,
         entries: allEntries,
         auditLogs: logs,
       };
-
-      const jsonString = JSON.stringify(exportPayload, null, 2);
+      const envelope = await encryptBackupPayload(exportPayload, {
+        salt: config.salt,
+        wrappedMEKByPassword: config.wrappedMEKByPassword,
+        wrappedMEKBySeed: config.wrappedMEKBySeed,
+      }, verifiedMasterKey);
+      const jsonString = JSON.stringify(envelope);
       const blob = new Blob([jsonString], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
 
@@ -154,40 +187,113 @@ export default function App() {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
+      setBackupDialog(returnToImportAfterExport ? 'import' : null);
+      setReturnToImportAfterExport(false);
+      setBackupSecret('');
       setStatus('Portable .sc backup exported.');
     } catch (err: unknown) {
-      setStatus(`Export failed: ${getErrorMessage(err)}`);
+      setStatus(err instanceof DOMException && err.name === 'OperationError'
+        ? 'Backup failed. Check the current password and try again.'
+        : `Backup failed: ${getErrorMessage(err)}`);
+    } finally {
+      setBackupBusy(false);
+      setBackupSecret('');
     }
   };
 
-  // Replace local data with a .sc backup after confirmation
+  const replaceLocalVault = async (data: BackupPayload) => {
+    await db.transaction('rw', [db.entries, db.vaultConfig, db.auditLogs], async () => {
+      await db.entries.clear();
+      await db.vaultConfig.clear();
+      await db.auditLogs.clear();
+
+      await db.vaultConfig.add(data.vaultConfig);
+      if (data.entries.length > 0) await db.entries.bulkAdd(data.entries);
+      if (data.auditLogs.length > 0) await db.auditLogs.bulkAdd(data.auditLogs);
+    });
+
+    recoveryPhraseCleared.current = true;
+    setGeneratedSeed([]);
+    setSeedConfirmed(false);
+    setSetupPassword('');
+    setBackupDialog(null);
+    setBackupSecret('');
+    setPendingEncryptedBackup(null);
+    setPendingLegacyBackup(null);
+    window.location.reload();
+  };
+
+  const handleEncryptedBackupImport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if ((!pendingEncryptedBackup && !pendingLegacyBackup) || !backupSecret) return;
+
+    setBackupBusy(true);
+    try {
+      const credentialSecret = backupCredential === 'recoveryPhrase'
+        ? backupSecret.trim().toLowerCase().split(/\s+/).join(' ')
+        : backupSecret;
+      if (backupCredential === 'recoveryPhrase' && !await validateBip39Seed(credentialSecret.split(' '))) {
+        throw new Error('Invalid recovery phrase.');
+      }
+      let data: BackupPayload;
+      if (pendingEncryptedBackup) {
+        data = await decryptBackupPayload(pendingEncryptedBackup, credentialSecret, backupCredential);
+      } else if (pendingLegacyBackup) {
+        if (backupCredential === 'recoveryPhrase' && !await validateBip39Seed(credentialSecret.split(' '))) {
+          throw new Error('Invalid recovery phrase.');
+        }
+        await unwrapMasterKey(
+          backupCredential === 'password'
+            ? pendingLegacyBackup.vaultConfig.wrappedMEKByPassword
+            : pendingLegacyBackup.vaultConfig.wrappedMEKBySeed,
+          credentialSecret,
+          pendingLegacyBackup.vaultConfig.salt,
+        );
+        data = pendingLegacyBackup;
+      } else {
+        return;
+      }
+      const confirmed = window.confirm(
+        `${pendingLegacyBackup ? 'This legacy backup does not encrypt all metadata. ' : ''}` +
+        'Opening this backup replaces [SC] and its entries currently stored in this browser.\n\nContinue?'
+      );
+      if (confirmed) await replaceLocalVault(data);
+    } catch {
+      alert('Backup could not be opened. Check the selected credential and try again.');
+    } finally {
+      setBackupBusy(false);
+      setBackupSecret('');
+    }
+  };
+
+  // Replace local data with a .sc backup after validation and confirmation.
   const handleImportVault = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.currentTarget.value = '';
     if (!file) return;
 
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
-        const data = parseBackup(event.target?.result as string);
+        const text = event.target?.result;
+        if (typeof text !== 'string') throw new Error('Backup file could not be read.');
+        if (text.length > 50_000_000) throw new Error('Backup file is too large.');
+        const header = JSON.parse(text) as { version?: unknown };
 
-        const confirmed = window.confirm(
-          "Opening this backup replaces [SC] and its entries currently stored in this browser.\n\nContinue?"
-        );
+        setPendingLegacyBackup(null);
+        if (header?.version === 2) {
+          setPendingEncryptedBackup(parseEncryptedBackup(text));
+          setBackupCredential('password');
+          setBackupSecret('');
+          setBackupDialog('import');
+          return;
+        }
 
-        if (!confirmed) return;
-
-        await db.transaction('rw', [db.entries, db.vaultConfig, db.auditLogs], async () => {
-          await db.entries.clear();
-          await db.vaultConfig.clear();
-          await db.auditLogs.clear();
-
-          await db.vaultConfig.add(data.vaultConfig);
-          if (data.entries.length > 0) await db.entries.bulkAdd(data.entries);
-          if (data.auditLogs.length > 0) await db.auditLogs.bulkAdd(data.auditLogs);
-        });
-
-        alert(".sc backup opened. Enter its password to continue.");
-        window.location.reload();
+        setPendingEncryptedBackup(null);
+        setPendingLegacyBackup(parseBackup(text));
+        setBackupCredential('password');
+        setBackupSecret('');
+        setBackupDialog('import');
       } catch (err: unknown) {
         alert(`Import failed: ${getErrorMessage(err)}`);
       }
@@ -205,10 +311,9 @@ export default function App() {
     try {
       const salt = generateSaltHex();
       const mek = await generateMasterKey();
-      const seedString = generatedSeed.join(' ');
 
       const wrappedMEKByPassword = await wrapMasterKey(mek, setupPassword, salt);
-      const wrappedMEKBySeed = await wrapMasterKey(mek, seedString, salt);
+      const wrappedMEKBySeed = await wrapMasterKey(mek, generatedSeed.join(' '), salt);
       const encryptedSignature = await encryptData(setupInitials, mek);
 
       await db.vaultConfig.add({
@@ -222,6 +327,10 @@ export default function App() {
       setMasterKey(mek);
       setCitizenInitials(setupInitials);
       setInitialsDraft(setupInitials);
+      recoveryPhraseCleared.current = true;
+      setGeneratedSeed([]);
+      setSeedConfirmed(false);
+      setSetupPassword('');
       setStatus('[SC] created.');
     } catch (err: unknown) {
       setStatus(`Provisioning failed: ${getErrorMessage(err)}`);
@@ -398,20 +507,19 @@ export default function App() {
           {vaultConfig && (
             <button
               onClick={handleExportVault}
-              className="text-xs bg-[#1c2230] hover:bg-[#283144] text-[#E5C158] px-3 py-1.5 rounded border border-[#2e374d] transition"
-              title="Export a portable .sc backup of [SC]"
+              disabled={!masterKey}
+              className="text-xs bg-[#1c2230] hover:bg-[#283144] text-[#E5C158] px-3 py-1.5 rounded border border-[#2e374d] transition disabled:cursor-not-allowed disabled:opacity-40"
+              title={masterKey ? 'Export an encrypted portable .sc backup of [SC]' : 'Unlock [SC] to create an encrypted backup'}
             >
               Export .sc backup
             </button>
           )}
 
           {/* Import .sc File */}
-          {!vaultConfig && (
-            <label className="text-xs bg-[#1c2230] hover:bg-[#283144] text-gray-300 px-3 py-1.5 rounded border border-[#2e374d] transition cursor-pointer">
-              Import .sc backup
-              <input type="file" accept=".sc,.json" onChange={handleImportVault} className="hidden" />
-            </label>
-          )}
+          <label className="text-xs bg-[#1c2230] hover:bg-[#283144] text-gray-300 px-3 py-1.5 rounded border border-[#2e374d] transition cursor-pointer">
+            Import .sc backup
+            <input type="file" accept=".sc,.json" onChange={handleImportVault} className="hidden" />
+          </label>
 
           {/* Lock Session Button */}
           {masterKey && (
@@ -904,6 +1012,115 @@ export default function App() {
             Review source code ↗
           </a>
         </footer>
+      )}
+
+      {backupDialog && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-4" role="presentation">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="backup-dialog-title"
+            className="w-full max-w-md border border-[#3b4252] bg-[#11141d] p-5 shadow-2xl"
+          >
+            <h2 id="backup-dialog-title" className="text-base font-bold text-[#E5C158]">
+              {backupDialog === 'export'
+                ? 'Encrypt [SC] backup'
+                : pendingLegacyBackup ? 'Open legacy [SC] backup' : 'Open encrypted [SC] backup'}
+            </h2>
+            <p className="mt-2 text-xs leading-relaxed text-gray-400">
+              {backupDialog === 'export'
+                ? 'Confirm the current [SC] password. The complete backup payload will be encrypted before download.'
+                : pendingLegacyBackup
+                  ? 'This version does not encrypt all metadata. Confirm its password or recovery phrase; local data changes only after credential validation and confirmation.'
+                  : 'Choose the credential used to unlock this backup. Nothing in local storage changes until decryption and validation succeed.'}
+            </p>
+
+            <form onSubmit={backupDialog === 'export' ? downloadBackup : handleEncryptedBackupImport} className="mt-5 space-y-4">
+              {backupDialog === 'import' && (
+                <div className="flex border-b border-[#202530] text-xs">
+                  <button
+                    type="button"
+                    onClick={() => { setBackupCredential('password'); setBackupSecret(''); }}
+                    aria-pressed={backupCredential === 'password'}
+                    className={`flex-1 py-2 font-bold ${backupCredential === 'password' ? 'border-b-2 border-[#E5C158] text-[#E5C158]' : 'text-gray-400'}`}
+                  >
+                    Password
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setBackupCredential('recoveryPhrase'); setBackupSecret(''); }}
+                    aria-pressed={backupCredential === 'recoveryPhrase'}
+                    className={`flex-1 py-2 font-bold ${backupCredential === 'recoveryPhrase' ? 'border-b-2 border-[#E5C158] text-[#E5C158]' : 'text-gray-400'}`}
+                  >
+                    Recovery phrase
+                  </button>
+                </div>
+              )}
+
+              {backupDialog === 'import' && backupCredential === 'recoveryPhrase' ? (
+                <textarea
+                  autoFocus
+                  rows={4}
+                  autoComplete="off"
+                  aria-label="Backup recovery phrase"
+                  placeholder="Enter the 24-word recovery phrase"
+                  value={backupSecret}
+                  onChange={(e) => setBackupSecret(e.target.value)}
+                  className="w-full resize-y border border-[#2b3245] bg-[#090a0f] p-2 text-xs font-mono text-white focus:outline-none focus:border-[#E5C158]"
+                />
+              ) : (
+                <input
+                  autoFocus
+                  type="password"
+                  autoComplete="current-password"
+                  aria-label={backupDialog === 'export' ? 'Current [SC] password for backup' : 'Backup password'}
+                  placeholder={backupDialog === 'export' ? 'Current [SC] password' : 'Backup password'}
+                  value={backupSecret}
+                  onChange={(e) => setBackupSecret(e.target.value)}
+                  className="w-full border border-[#2b3245] bg-[#090a0f] p-2.5 text-sm text-white focus:outline-none focus:border-[#E5C158]"
+                />
+              )}
+
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBackupDialog(null);
+                    setBackupSecret('');
+                    setPendingEncryptedBackup(null);
+                    setPendingLegacyBackup(null);
+                    setReturnToImportAfterExport(false);
+                  }}
+                  className="border border-[#2e374d] px-3 py-2 text-xs text-gray-300 hover:bg-[#1c2230]"
+                >
+                  Cancel
+                </button>
+                {backupDialog === 'import' && vaultConfig && (
+                  <button
+                    type="button"
+                    disabled={!masterKey || backupBusy}
+                    onClick={() => {
+                      setReturnToImportAfterExport(true);
+                      setBackupDialog('export');
+                      setBackupSecret('');
+                    }}
+                    className="border border-[#2e374d] px-3 py-2 text-xs text-[#E5C158] hover:bg-[#1c2230] disabled:cursor-not-allowed disabled:opacity-40"
+                    title={!masterKey ? 'Unlock [SC] to export its current contents first' : 'Download an encrypted backup before replacing local data'}
+                  >
+                    Export current first
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  disabled={!backupSecret.trim() || backupBusy}
+                  className="bg-[#E5C158] px-3 py-2 text-xs font-bold text-[#090a0f] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {backupBusy ? 'Working…' : backupDialog === 'export' ? 'Encrypt and download' : 'Decrypt and open'}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
       )}
     </main>
   );
