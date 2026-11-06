@@ -1,5 +1,5 @@
 // Read tab: Reader (formatted text with term popups and page dividers) and Printed (original page scans) views.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import rehypeSlug from 'rehype-slug';
 import remarkGfm from 'remark-gfm';
@@ -12,6 +12,12 @@ const CODEX_PAGE = 28;
 // First block of the page 28 entry templates; terms there are not linked.
 const CODEX_START = '[SOVEREIGN CODEX]';
 const SETTINGS_KEY = 'sc-reader-settings';
+const DEFAULT_WIDTH = 72;
+const MIN_WIDTH = 20;
+const MAX_WIDTH = 200;
+const DEFAULT_FONT_SIZE = 15;
+const MIN_FONT_SIZE = 12;
+const MAX_FONT_SIZE = 26;
 
 type Mode = 'text' | 'printed';
 type Settings = { width: number; fontSize: number };
@@ -20,10 +26,19 @@ type Settings = { width: number; fontSize: number };
 function loadSettings(): Settings {
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') as Partial<Settings>;
-    return { width: Number(saved.width) || 72, fontSize: Number(saved.fontSize) || 15 };
+    return {
+      width: normalizeSetting(saved.width, DEFAULT_WIDTH, MIN_WIDTH, MAX_WIDTH),
+      fontSize: normalizeSetting(saved.fontSize, DEFAULT_FONT_SIZE, MIN_FONT_SIZE, MAX_FONT_SIZE),
+    };
   } catch {
-    return { width: 72, fontSize: 15 };
+    return { width: DEFAULT_WIDTH, fontSize: DEFAULT_FONT_SIZE };
   }
+}
+
+// Keeps persisted reader values inside the ranges exposed by the controls.
+function normalizeSetting(value: unknown, fallback: number, min: number, max: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.round(Math.min(max, Math.max(min, value)));
 }
 
 // Printed page n -> /print/p-NN.jpg; heading shows the footer id like [OC-C-001] 1/2.
@@ -37,9 +52,13 @@ export default function ArchiveReader({ onBeginEntry }: { onBeginEntry: () => vo
   const [mode, setMode] = useState<Mode>('text');
   const [printedPage, setPrintedPage] = useState(TOPOLOGY_PAGE);
   const [settings, setSettings] = useState(loadSettings);
+  const [maxWidth, setMaxWidth] = useState(MAX_WIDTH);
   const [pastTopology, setPastTopology] = useState(false);
+  const readerSection = useRef<HTMLElement>(null);
+  const characterMeasure = useRef<HTMLSpanElement>(null);
   const pendingTarget = useRef<string | null>(null);
   const viewerTop = useRef<HTMLDivElement>(null);
+  const measurementFontSize = mode === 'text' ? settings.fontSize : 16;
 
   // Load the archive text and page map together; a failure shows one error.
   useEffect(() => {
@@ -67,6 +86,30 @@ export default function ArchiveReader({ onBeginEntry }: { onBeginEntry: () => vo
   useEffect(() => {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   }, [settings]);
+
+  // Caps Width at the number of characters that fit in the current reader area.
+  useLayoutEffect(() => {
+    const section = readerSection.current;
+    const measure = characterMeasure.current;
+    if (!section || !measure) return;
+
+    const updateMaxWidth = () => {
+      const style = window.getComputedStyle(section);
+      const horizontalPadding = Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.paddingRight);
+      const contentWidth = section.clientWidth - horizontalPadding;
+      const characterWidth = measure.getBoundingClientRect().width;
+      if (contentWidth <= 0 || characterWidth <= 0) return;
+
+      const nextMax = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, Math.floor(contentWidth / characterWidth)));
+      setMaxWidth((current) => current === nextMax ? current : nextMax);
+    };
+
+    updateMaxWidth();
+    const observer = new ResizeObserver(updateMaxWidth);
+    observer.observe(section);
+    observer.observe(measure);
+    return () => observer.disconnect();
+  }, [measurementFontSize]);
 
   // Parsed once per load: System Terms, then remark plugins in order (pages before terms).
   const terms = useMemo(() => parseSystemTerms(archiveText), [archiveText]);
@@ -128,13 +171,14 @@ export default function ArchiveReader({ onBeginEntry }: { onBeginEntry: () => vo
 
   const showReturn = mode === 'text' ? pastTopology : printedPage !== TOPOLOGY_PAGE;
   const returnToTopology = () => goTo(`page-${TOPOLOGY_PAGE}`);
+  const effectiveWidth = Math.min(settings.width, maxWidth);
 
   // Markdown element styling plus the custom term-link, term-def and page-break elements.
   const components: Components = {
-    h1: ({ children, node, ...props }) => { void node; return <h1 className="mb-5 mt-10 border-b border-[#303642] pb-3 text-2xl font-bold text-[#E5C158]" {...props}>{children}</h1>; },
-    h2: ({ children, node, ...props }) => { void node; return <h2 className="mb-4 mt-10 border-b border-[#303642] pb-2 text-xl font-bold text-[#E5C158]" {...props}>{children}</h2>; },
-    h3: ({ children, node, ...props }) => { void node; return <h3 className="mb-3 mt-7 text-lg font-semibold text-[#E5C158]" {...props}>{children}</h3>; },
-    h4: ({ children, node, ...props }) => { void node; return <h4 className="mb-2 mt-6 text-base font-semibold text-gray-100" {...props}>{children}</h4>; },
+    h1: ({ children, node, ...props }) => { void node; return <h1 className="mb-5 mt-10 border-b border-[#303642] pb-3 font-bold text-[#E5C158]" {...props}>{children}</h1>; },
+    h2: ({ children, node, ...props }) => { void node; return <h2 className="mb-4 mt-10 border-b border-[#303642] pb-2 font-bold text-[#E5C158]" {...props}>{children}</h2>; },
+    h3: ({ children, node, ...props }) => { void node; return <h3 className="mb-3 mt-7 font-semibold text-[#E5C158]" {...props}>{children}</h3>; },
+    h4: ({ children, node, ...props }) => { void node; return <h4 className="mb-2 mt-6 font-semibold text-gray-100" {...props}>{children}</h4>; },
     p: ({ children, node, ...props }) => { void node; return <p className="mb-4 whitespace-pre-wrap" {...props}>{children}</p>; },
     ul: ({ children, node, ...props }) => { void node; return <ul className="mb-5 list-disc space-y-2 pl-6" {...props}>{children}</ul>; },
     ol: ({ children, node, ...props }) => { void node; return <ol className="mb-5 list-decimal space-y-2 pl-6" {...props}>{children}</ol>; },
@@ -155,7 +199,7 @@ export default function ArchiveReader({ onBeginEntry }: { onBeginEntry: () => vo
     },
     img: ({ alt, node, ...props }) => {
       void node;
-      return <img alt={alt || 'Archive sigil diagram'} className="my-6 h-auto max-w-full" loading="lazy" {...props} />;
+      return <img alt={alt || 'Archive [SIGIL] diagram'} className="my-6 h-auto max-w-full" loading="lazy" {...props} />;
     },
     ...({
       'term-link': TermLink,
@@ -182,7 +226,8 @@ export default function ArchiveReader({ onBeginEntry }: { onBeginEntry: () => vo
 
   return (
     <ArchiveContext.Provider value={{ terms, pages, goTo }}>
-      <section className="sc-cover-frame sc-cover-frame--read space-y-5 p-4" aria-labelledby="archive-reader-title">
+      <section ref={readerSection} className="sc-cover-frame sc-cover-frame--read space-y-5 p-4" aria-labelledby="archive-reader-title">
+        <span ref={characterMeasure} aria-hidden="true" className="reader-character-measure" style={{ fontSize: `${measurementFontSize}px` }}>0</span>
         <header className="space-y-3 border-b border-[#202530] pb-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 id="archive-reader-title" className="text-lg font-bold text-[#E5C158]">The_[SYSTEM]_Archive</h2>
@@ -204,15 +249,40 @@ export default function ArchiveReader({ onBeginEntry }: { onBeginEntry: () => vo
             Full core text of The_[SYSTEM]_Archive.{' '}
             <a href="https://ozmacalafiasystem.org" target="_blank" rel="noreferrer" className="text-[#E5C158] underline underline-offset-4">Origin site</a>
           </p>
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px] text-gray-400">
-            <label className="flex items-center gap-2">
-              Width
-              <input type="range" min={40} max={200} step={4} value={settings.width} onChange={(e) => setSettings({ ...settings, width: Number(e.target.value) })} className="accent-[#E5C158]" />
+          <div className="reader-settings text-[11px] text-gray-400">
+            <label className="reader-setting">
+              <span>Width</span>
+              <input
+                id="reader-width"
+                type="range"
+                min={MIN_WIDTH}
+                max={Math.max(MIN_WIDTH, maxWidth)}
+                step={1}
+                value={effectiveWidth}
+                disabled={maxWidth <= MIN_WIDTH}
+                onChange={(event) => setSettings((current) => ({ ...current, width: Number(event.target.value) }))}
+                aria-label="Maximum reader width"
+                aria-valuetext={`${effectiveWidth} characters`}
+                className="reader-range"
+              />
+              <output htmlFor="reader-width">{effectiveWidth}ch</output>
             </label>
             {mode === 'text' && (
-              <label className="flex items-center gap-2">
-                Text size
-                <input type="range" min={12} max={26} value={settings.fontSize} onChange={(e) => setSettings({ ...settings, fontSize: Number(e.target.value) })} className="accent-[#E5C158]" />
+              <label className="reader-setting">
+                <span>Text size</span>
+                <input
+                  id="reader-font-size"
+                  type="range"
+                  min={MIN_FONT_SIZE}
+                  max={MAX_FONT_SIZE}
+                  step={1}
+                  value={settings.fontSize}
+                  onChange={(event) => setSettings((current) => ({ ...current, fontSize: Number(event.target.value) }))}
+                  aria-label="Reader text size"
+                  aria-valuetext={`${settings.fontSize} pixels`}
+                  className="reader-range"
+                />
+                <output htmlFor="reader-font-size">{settings.fontSize}px</output>
               </label>
             )}
           </div>
@@ -224,7 +294,7 @@ export default function ArchiveReader({ onBeginEntry }: { onBeginEntry: () => vo
           <p role="status" className="text-sm text-gray-400">Loading the Archive…</p>
         ) : mode === 'text' ? (
           <>
-            <article className="archive-reader mx-auto break-words leading-8 text-gray-200" style={{ maxWidth: `${settings.width}ch`, fontSize: `${settings.fontSize}px` }}>
+            <article className="archive-reader mx-auto break-words text-gray-200" style={{ maxWidth: `${effectiveWidth}ch`, fontSize: `${settings.fontSize}px`, lineHeight: 1.7 }}>
               <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={[rehypeSlug]} components={components}>
                 {archiveText}
               </ReactMarkdown>
@@ -232,7 +302,7 @@ export default function ArchiveReader({ onBeginEntry }: { onBeginEntry: () => vo
             {codexCta}
           </>
         ) : (
-          <div ref={viewerTop} className="mx-auto space-y-3" style={{ maxWidth: `${settings.width}ch` }}>
+          <div ref={viewerTop} className="mx-auto space-y-3" style={{ maxWidth: `${effectiveWidth}ch` }}>
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-300">
               <button type="button" disabled={printedPage <= 1} onClick={() => setPrintedPage(printedPage - 1)} className="viewer-button">Previous</button>
               <label className="flex items-center gap-2">

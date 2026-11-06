@@ -492,23 +492,24 @@ export default function App() {
   return (
     <main className={`min-h-screen bg-[#090a0f] text-[#e0e6ed] p-6 mx-auto space-y-8 font-sans ${activeSection === 'archive' ? 'max-w-none' : 'max-w-4xl'}`}>
       {/* Brand, backup, and session controls */}
-      <header className="border-b border-[#202530] pb-4 flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-[#E5C158] font-mono">[SC] [SOVEREIGN CODEX]</h1>
-          <p className="text-xs text-gray-400">The Application</p>
-        </div>
-
-        <div className="flex items-center gap-3">
+      <header className="app-header space-y-3 border-b border-[#202530] pb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="break-words text-xl font-bold text-[#E5C158] font-mono sm:text-2xl">[SC] [SOVEREIGN CODEX]</h1>
+            <p className="text-xs text-gray-400">The Application</p>
+          </div>
           <span className="text-xs bg-[#141822] px-3 py-1.5 rounded border border-[#252b3b] font-mono hidden sm:inline-block">
             {status}
           </span>
+        </div>
 
+        <div className="app-header__actions">
           {/* Export .sc File */}
           {vaultConfig && (
             <button
               onClick={handleExportVault}
               disabled={!masterKey}
-              className="text-xs bg-[#1c2230] hover:bg-[#283144] text-[#E5C158] px-3 py-1.5 rounded border border-[#2e374d] transition disabled:cursor-not-allowed disabled:opacity-40"
+              className="app-header__action text-xs bg-[#1c2230] hover:bg-[#283144] text-[#E5C158] rounded border border-[#2e374d] transition disabled:cursor-not-allowed disabled:opacity-40"
               title={masterKey ? 'Export an encrypted portable .sc backup of [SC]' : 'Unlock [SC] to create an encrypted backup'}
             >
               Export .sc backup
@@ -516,7 +517,7 @@ export default function App() {
           )}
 
           {/* Import .sc File */}
-          <label className="text-xs bg-[#1c2230] hover:bg-[#283144] text-gray-300 px-3 py-1.5 rounded border border-[#2e374d] transition cursor-pointer">
+          <label className="app-header__action text-xs bg-[#1c2230] hover:bg-[#283144] text-gray-300 rounded border border-[#2e374d] transition cursor-pointer">
             Import .sc backup
             <input type="file" accept=".sc,.json" onChange={handleImportVault} className="hidden" />
           </label>
@@ -534,7 +535,7 @@ export default function App() {
                 setPasswordForSignature('');
                 setStatus('[SC] locked.');
               }}
-              className="text-xs bg-[#1c2230] hover:bg-[#283144] text-gray-300 px-3 py-1.5 rounded border border-[#2e374d] transition"
+              className="app-header__action text-xs bg-[#1c2230] hover:bg-[#283144] text-gray-300 rounded border border-[#2e374d] transition"
             >
               Lock [SC]
             </button>
@@ -543,7 +544,7 @@ export default function App() {
           {/* Reset / Purge Vault Button */}
           <button
             onClick={handleFactoryReset}
-            className="text-xs bg-red-950/40 hover:bg-red-900/60 text-red-300 px-3 py-1.5 rounded border border-red-800/50 transition"
+            className="app-header__action text-xs bg-red-950/40 hover:bg-red-900/60 text-red-300 rounded border border-red-800/50 transition"
           >
             Erase local [SC]
           </button>
@@ -1009,7 +1010,7 @@ export default function App() {
             rel="noreferrer"
             className="text-[11px] text-gray-500 underline decoration-gray-700 underline-offset-4 transition hover:text-[#E5C158]"
           >
-            Review source code ↗
+            View source code
           </a>
         </footer>
       )}

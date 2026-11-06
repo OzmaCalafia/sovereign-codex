@@ -47,6 +47,114 @@
   }
 }
 
+/* App actions stay aligned with the section navigation. */
+.app-header__actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.5rem), 1fr));
+  gap: 0.75rem;
+}
+
+.app-header__action {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0.75rem;
+  text-align: center;
+  white-space: normal;
+}
+
+/* Reader headings scale with the selected body text size. */
+.archive-reader h1 { font-size: 1.6em; }
+.archive-reader h2 { font-size: 1.35em; }
+.archive-reader h3 { font-size: 1.15em; }
+.archive-reader h4 { font-size: 1em; }
+
+/* Reader settings use consistent, responsive range controls. */
+.reader-settings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.25rem;
+}
+
+.reader-setting {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.reader-range {
+  width: clamp(8rem, 28vw, 13rem);
+  height: 1.5rem;
+  margin: 0;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  touch-action: pan-y;
+}
+
+.reader-range:focus-visible {
+  border-radius: 0.25rem;
+  outline: 2px solid #e5c158;
+  outline-offset: 3px;
+}
+
+.reader-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.reader-range::-webkit-slider-runnable-track {
+  height: 0.25rem;
+  border: 1px solid #303642;
+  background: #141822;
+}
+
+.reader-range::-webkit-slider-thumb {
+  width: 1rem;
+  height: 1rem;
+  margin-top: -0.4375rem;
+  appearance: none;
+  border: 2px solid #090a0f;
+  border-radius: 50%;
+  background: #e5c158;
+  box-shadow: 0 0 0 1px #e5c158;
+}
+
+.reader-range::-moz-range-track {
+  height: 0.25rem;
+  border: 1px solid #303642;
+  background: #141822;
+}
+
+.reader-range::-moz-range-progress {
+  height: 0.25rem;
+  background: #806f36;
+}
+
+.reader-range::-moz-range-thumb {
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid #090a0f;
+  border-radius: 50%;
+  background: #e5c158;
+  box-shadow: 0 0 0 1px #e5c158;
+}
+
+.reader-character-measure {
+  position: fixed;
+  top: 0;
+  left: -10000px;
+  width: 1ch;
+  visibility: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 /* System Term links and definition popup */
 .term-link {
   color: inherit;
