@@ -51,7 +51,7 @@ export default function App() {
   const [confirmReplacementPassword, setConfirmReplacementPassword] = useState('');
   const [passwordForSignature, setPasswordForSignature] = useState('');
   const [masterKey, setMasterKey] = useState<CryptoKey | null>(null);
-  const [status, setStatus] = useState('Checking local archive...');
+  const [status, setStatus] = useState('');
 
   // Provisioning state
   const [setupPassword, setSetupPassword] = useState('');
@@ -498,9 +498,11 @@ export default function App() {
             <h1 className="break-words text-xl font-bold text-[#E5C158] font-mono sm:text-2xl">[SC] [SOVEREIGN CODEX]</h1>
             <p className="text-xs text-gray-400">The Application</p>
           </div>
-          <span className="text-xs bg-[#141822] px-3 py-1.5 rounded border border-[#252b3b] font-mono hidden sm:inline-block">
-            {status}
-          </span>
+          {status && (
+            <span className="text-xs bg-[#141822] px-3 py-1.5 rounded border border-[#252b3b] font-mono hidden sm:inline-block">
+              {status}
+            </span>
+          )}
         </div>
 
         <div className="app-header__actions">
