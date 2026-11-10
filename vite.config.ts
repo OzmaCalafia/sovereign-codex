@@ -34,10 +34,18 @@ export default defineConfig({
         ]
       },
       workbox: {
-        // Precache app files; cache printed page scans on first view
+        // Precache the app shell; large media and non-Latin font subsets are cached on first use.
         globPatterns: ['**/*.{js,css,html,ico,md,png,svg,woff2,json}'],
+        globIgnores: [
+          '**/protocol-00-baseline-anchor.png',
+          '**/ubuntu-cyrillic*',
+          '**/ubuntu-greek*',
+          '**/ubuntu-latin-ext-*'
+        ],
         runtimeCaching: [
-          { urlPattern: /\/print\/p-\d+\.jpg$/, handler: 'CacheFirst', options: { cacheName: 'archive-print-pages' } }
+          { urlPattern: /\/print\/p-\d+\.jpg$/, handler: 'CacheFirst', options: { cacheName: 'archive-print-pages' } },
+          { urlPattern: /\/(protocol-00-baseline-anchor\.png|archive-cover-(front|back)\.jpg)$/, handler: 'CacheFirst', options: { cacheName: 'archive-media' } },
+          { urlPattern: /\/assets\/ubuntu-.*\.woff2$/, handler: 'CacheFirst', options: { cacheName: 'fonts' } }
         ]
       }
     })

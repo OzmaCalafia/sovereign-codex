@@ -74,7 +74,7 @@ export function getSequencePrompts(sequence: CodexSequence) {
 }
 
 /** Trims fields and applies defaults. */
-export function normalizeCodexDraft(input: Partial<CodexEntryDraft>): CodexEntryDraft {
+export function normalizeCodexDraft(input: Partial<CodexEntryDraft>): CodexEntryDraft & { sequence: CodexSequence } {
   return {
     title: (input.title ?? '').trim(),
     sequence: input.sequence === 'B' ? 'B' : 'A',
@@ -89,7 +89,7 @@ export function normalizeCodexDraft(input: Partial<CodexEntryDraft>): CodexEntry
 /** Builds the canonical text block that gets encrypted and saved. */
 export function serializeCodexEntry(entry: Partial<CodexEntryDraft>): string {
   const normalized = normalizeCodexDraft(entry);
-  const sequenceLabel = getSequenceLabel(normalized.sequence ?? 'A');
+  const sequenceLabel = getSequenceLabel(normalized.sequence);
 
   const blocks = [
     `TITLE: ${normalized.title || 'Untitled Entry'}`,
@@ -154,7 +154,6 @@ export function parseCodexEntry(raw: string): ParsedCodexEntry {
 
     if (trimmed.startsWith('[SEQUENCE]')) {
       const value = trimmed.replace(/^\[SEQUENCE\]\s*/i, '').trim();
-      entry.sequenceLabel = value || entry.sequenceLabel;
       entry.sequence = getSequenceKeyFromLabel(value);
       continue;
     }
@@ -217,7 +216,7 @@ export function buildCodexPreview(entry: Partial<CodexEntryDraft>): string[] {
 
   return [
     `Signature: [${normalized.signature || '__'}]`,
-    `Sequence: ${getSequenceLabel(normalized.sequence ?? 'A')}`,
+    `Sequence: ${getSequenceLabel(normalized.sequence)}`,
     `Catalyst: ${normalized.catalyst || '—'}`,
     `Friction: ${normalized.friction || '—'}`,
     `Parameter: ${normalized.parameter || '—'}`,

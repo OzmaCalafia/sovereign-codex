@@ -1,10 +1,11 @@
 // Strict validation of .sc backup files before anything touches the local database.
 import type { AuditLog, EntryRecord, VaultConfig } from '../db/database';
-import { decryptData, encryptData, unwrapMasterKey } from './crypto';
+import { bytesFromHex, decryptData, encryptData, generateSaltHex, toArrayBuffer, unwrapMasterKey } from './crypto';
 
 export const BACKUP_VERSION = 1;
 export const ENCRYPTED_BACKUP_VERSION = 2;
-const MAX_BACKUP_CHARS = 50_000_000;
+export const MAX_BACKUP_CHARS = 50_000_000;
+const SALT_HEX = /^[0-9a-f]{32}$/i;
 
 export interface BackupPayload {
   version: number;
@@ -34,7 +35,7 @@ const isByteArray = (value: unknown, length?: number): value is number[] =>
   value.every((byte) => Number.isInteger(byte) && byte >= 0 && byte <= 255);
 
 /** True when `value` is JSON text holding an AES-GCM payload with a 12-byte IV and byte-array body. */
-function isEncryptedJson(value: unknown, bodyKey: 'ciphertext' | 'wrappedKey'): boolean {
+function isEncryptedJson(value: unknown, bodyKey: 'ciphertext' | 'wrappedKey'): value is string {
   if (!isString(value)) return false;
   try {
     const parsed: unknown = JSON.parse(value);
@@ -51,7 +52,7 @@ function unknownFields(raw: Record<string, unknown>, knownFields: string[], pres
 
 function readVaultConfig(raw: unknown, preserveUnknown = false): VaultConfig {
   if (!isObject(raw)) throw new Error('Missing [SC] key data.');
-  if (!isString(raw.salt) || !/^[0-9a-f]{32}$/i.test(raw.salt)) throw new Error('Invalid salt.');
+  if (!isString(raw.salt) || !SALT_HEX.test(raw.salt)) throw new Error('Invalid salt.');
   if (!isEncryptedJson(raw.wrappedMEKByPassword, 'wrappedKey')) throw new Error('Invalid password key.');
   if (!isEncryptedJson(raw.wrappedMEKBySeed, 'wrappedKey')) throw new Error('Invalid recovery key.');
   if (raw.encryptedSignature !== undefined && !isEncryptedJson(raw.encryptedSignature, 'ciphertext')) throw new Error('Invalid signature.');
@@ -60,8 +61,8 @@ function readVaultConfig(raw: unknown, preserveUnknown = false): VaultConfig {
   return {
     ...unknownFields(raw, ['id', 'salt', 'wrappedMEKByPassword', 'wrappedMEKBySeed', 'encryptedSignature', 'createdAt'], preserveUnknown),
     salt: raw.salt,
-    wrappedMEKByPassword: raw.wrappedMEKByPassword as string,
-    wrappedMEKBySeed: raw.wrappedMEKBySeed as string,
+    wrappedMEKByPassword: raw.wrappedMEKByPassword,
+    wrappedMEKBySeed: raw.wrappedMEKBySeed,
     ...(raw.encryptedSignature !== undefined && { encryptedSignature: raw.encryptedSignature as string }),
     createdAt: raw.createdAt,
   };
@@ -81,7 +82,7 @@ function readEntry(raw: unknown, position: number, preserveUnknown = false): Ent
     category: raw.category,
     tags: raw.tags as string[],
     isEncrypted: true,
-    content: raw.content as string,
+    content: raw.content,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
   };
@@ -99,21 +100,15 @@ function readAuditLog(raw: unknown, position: number, preserveUnknown = false): 
   };
 }
 
-function bytesFromHex(hex: string): Uint8Array {
-  return new Uint8Array(hex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)));
-}
-
 async function deriveBackupKey(masterKey: CryptoKey, saltHex: string): Promise<CryptoKey> {
   const rawMasterKey = await window.crypto.subtle.exportKey('raw', masterKey);
   const keyMaterial = await window.crypto.subtle.importKey('raw', rawMasterKey, 'HKDF', false, ['deriveKey']);
-  const saltBytes = bytesFromHex(saltHex);
-  const saltBuffer = saltBytes.buffer.slice(saltBytes.byteOffset, saltBytes.byteOffset + saltBytes.byteLength) as ArrayBuffer;
 
   return window.crypto.subtle.deriveKey(
     {
       name: 'HKDF',
       hash: 'SHA-256',
-      salt: saltBuffer,
+      salt: toArrayBuffer(bytesFromHex(saltHex)),
       info: new TextEncoder().encode('sovereign-codex:backup:v2'),
     },
     keyMaterial,
@@ -129,9 +124,7 @@ export async function encryptBackupPayload(
   keySlots: EncryptedBackupEnvelope['keySlots'],
   masterKey: CryptoKey,
 ): Promise<EncryptedBackupEnvelope> {
-  const backupSalt = Array.from(window.crypto.getRandomValues(new Uint8Array(16)))
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('');
+  const backupSalt = generateSaltHex();
   const backupKey = await deriveBackupKey(masterKey, backupSalt);
 
   return {
@@ -157,13 +150,11 @@ export function parseEncryptedBackup(text: string): EncryptedBackupEnvelope {
     throw new Error('Unsupported encrypted .sc file version.');
   }
   const keySlots = raw.keySlots;
-  if (!isString(keySlots.salt) || !/^[0-9a-f]{32}$/i.test(keySlots.salt)) throw new Error('Invalid key slot salt.');
-  if (!isString(keySlots.wrappedMEKByPassword)) throw new Error('Invalid password key slot.');
-  if (!isString(keySlots.wrappedMEKBySeed)) throw new Error('Invalid recovery key slot.');
+  if (!isString(keySlots.salt) || !SALT_HEX.test(keySlots.salt)) throw new Error('Invalid key slot salt.');
   if (!isEncryptedJson(keySlots.wrappedMEKByPassword, 'wrappedKey')) throw new Error('Invalid password key slot.');
   if (!isEncryptedJson(keySlots.wrappedMEKBySeed, 'wrappedKey')) throw new Error('Invalid recovery key slot.');
-  if (!isString(raw.backupSalt) || !/^[0-9a-f]{32}$/i.test(raw.backupSalt)) throw new Error('Invalid backup salt.');
-  if (!isString(raw.ciphertext) || !isEncryptedJson(raw.ciphertext, 'ciphertext')) throw new Error('Invalid encrypted backup payload.');
+  if (!isString(raw.backupSalt) || !SALT_HEX.test(raw.backupSalt)) throw new Error('Invalid backup salt.');
+  if (!isEncryptedJson(raw.ciphertext, 'ciphertext')) throw new Error('Invalid encrypted backup payload.');
 
   return {
     version: ENCRYPTED_BACKUP_VERSION,

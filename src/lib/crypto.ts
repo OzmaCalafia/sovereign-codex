@@ -20,7 +20,7 @@ export async function generateBip39Seed(): Promise<string[]> {
   const words: string[] = [];
   for (let i = 0; i < bits.length; i += 11) {
     const index = parseInt(bits.slice(i, i + 11), 2);
-    words.push(BIP39_WORDLIST[index % BIP39_WORDLIST.length]);
+    words.push(BIP39_WORDLIST[index]);
   }
 
   return words;
@@ -55,8 +55,13 @@ export async function validateBip39Seed(words: string[]): Promise<boolean> {
 }
 
 /** Copies a Uint8Array view into a standalone ArrayBuffer for WebCrypto. */
-function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+export function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+}
+
+/** Decodes a hex string into bytes. */
+export function bytesFromHex(hex: string): Uint8Array {
+  return new Uint8Array(hex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)));
 }
 
 // OWASP-recommended work factor for PBKDF2-HMAC-SHA256; WebCrypto has no memory-hard KDF.
@@ -98,7 +103,7 @@ export async function generateMasterKey(): Promise<CryptoKey> {
 
 /** Encrypts the MEK under a secret so it can be stored; returns JSON {iv, wrappedKey}. */
 export async function wrapMasterKey(masterKey: CryptoKey, secret: string, saltHex: string): Promise<string> {
-  const salt = new Uint8Array(saltHex.match(/.{1,2}/g)!.map((b) => parseInt(b, 16)));
+  const salt = bytesFromHex(saltHex);
   const wrappingKey = await deriveKeyFromSecret(secret, salt);
   
   const iv = window.crypto.getRandomValues(new Uint8Array(12));
@@ -115,7 +120,7 @@ export async function wrapMasterKey(masterKey: CryptoKey, secret: string, saltHe
 
 /** Reverses wrapMasterKey; throws OperationError when the secret is wrong. */
 export async function unwrapMasterKey(wrappedPayload: string, secret: string, saltHex: string): Promise<CryptoKey> {
-  const salt = new Uint8Array(saltHex.match(/.{1,2}/g)!.map((b) => parseInt(b, 16)));
+  const salt = bytesFromHex(saltHex);
   const unwrappingKey = await deriveKeyFromSecret(secret, salt);
   const { iv, wrappedKey } = JSON.parse(wrappedPayload);
 

@@ -17,6 +17,7 @@ import {
   getSequenceLabel,
   getSequencePrompts,
   isValidCitizenInitials,
+  ITERATIVE_FORMULA_PROTOCOL,
   normalizeCitizenInitials,
   parseCodexEntry,
   type CodexSequence,
@@ -24,6 +25,8 @@ import {
 import { sourceRepositoryUrl } from './lib/sourceRepository';
 import {
   BACKUP_VERSION,
+  ENCRYPTED_BACKUP_VERSION,
+  MAX_BACKUP_CHARS,
   decryptBackupPayload,
   encryptBackupPayload,
   parseBackup,
@@ -95,6 +98,11 @@ export default function App() {
   const vaultConfig = useLiveQuery(() => db.vaultConfig.toCollection().first());
   const entries = useLiveQuery(() => db.entries.toArray());
   const sequenceGuidance = getSequencePrompts(entrySequence);
+  const entryFields = [
+    { label: 'The Catalyst', prompt: 'catalyst', execution: 'catalystExecution', value: entryCatalyst, onChange: setEntryCatalyst },
+    { label: 'The Friction', prompt: 'friction', execution: 'frictionExecution', value: entryFriction, onChange: setEntryFriction },
+    { label: 'The Parameter', prompt: 'parameter', execution: 'parameterExecution', value: entryParameter, onChange: setEntryParameter },
+  ] as const;
 
   // Create a recovery phrase only while setting up a new [SC].
   useEffect(() => {
@@ -111,6 +119,17 @@ export default function App() {
   };
 
   // Setup and local data lifecycle
+  const clearSession = () => {
+    setMasterKey(null);
+    setCitizenInitials('');
+    setInitialsDraft('');
+    setCurrentPasswordForChange('');
+    setReplacementPassword('');
+    setConfirmReplacementPassword('');
+    setPasswordForSignature('');
+    setDecryptedRecords({});
+  };
+
   const handleFactoryReset = async () => {
     const confirmed = window.confirm(
       "This permanently erases [SC] and every entry stored in this browser.\n\n" +
@@ -120,18 +139,12 @@ export default function App() {
 
     if (confirmed) {
       await wipeLocalVault();
-      setMasterKey(null);
+      clearSession();
       setSetupPassword('');
       setSetupInitials('');
       setMainPassword('');
-      setCurrentPasswordForChange('');
-      setReplacementPassword('');
-      setConfirmReplacementPassword('');
-      setPasswordForSignature('');
       setRecoverySeedInput('');
       setNewPassword('');
-      setCitizenInitials('');
-      setInitialsDraft('');
       setSeedConfirmed(false);
       recoveryPhraseCleared.current = false;
 
@@ -212,14 +225,6 @@ export default function App() {
       if (data.auditLogs.length > 0) await db.auditLogs.bulkAdd(data.auditLogs);
     });
 
-    recoveryPhraseCleared.current = true;
-    setGeneratedSeed([]);
-    setSeedConfirmed(false);
-    setSetupPassword('');
-    setBackupDialog(null);
-    setBackupSecret('');
-    setPendingEncryptedBackup(null);
-    setPendingLegacyBackup(null);
     window.location.reload();
   };
 
@@ -239,9 +244,6 @@ export default function App() {
       if (pendingEncryptedBackup) {
         data = await decryptBackupPayload(pendingEncryptedBackup, credentialSecret, backupCredential);
       } else if (pendingLegacyBackup) {
-        if (backupCredential === 'recoveryPhrase' && !await validateBip39Seed(credentialSecret.split(' '))) {
-          throw new Error('Invalid recovery phrase.');
-        }
         await unwrapMasterKey(
           backupCredential === 'password'
             ? pendingLegacyBackup.vaultConfig.wrappedMEKByPassword
@@ -272,33 +274,20 @@ export default function App() {
     e.currentTarget.value = '';
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const text = event.target?.result;
-        if (typeof text !== 'string') throw new Error('Backup file could not be read.');
-        if (text.length > 50_000_000) throw new Error('Backup file is too large.');
-        const header = JSON.parse(text) as { version?: unknown };
+    try {
+      const text = await file.text();
+      if (text.length > MAX_BACKUP_CHARS) throw new Error('Backup file is too large.');
+      const header = JSON.parse(text) as { version?: unknown } | null;
+      const encrypted = header?.version === ENCRYPTED_BACKUP_VERSION;
 
-        setPendingLegacyBackup(null);
-        if (header?.version === 2) {
-          setPendingEncryptedBackup(parseEncryptedBackup(text));
-          setBackupCredential('password');
-          setBackupSecret('');
-          setBackupDialog('import');
-          return;
-        }
-
-        setPendingEncryptedBackup(null);
-        setPendingLegacyBackup(parseBackup(text));
-        setBackupCredential('password');
-        setBackupSecret('');
-        setBackupDialog('import');
-      } catch (err: unknown) {
-        alert(`Import failed: ${getErrorMessage(err)}`);
-      }
-    };
-    reader.readAsText(file);
+      setPendingEncryptedBackup(encrypted ? parseEncryptedBackup(text) : null);
+      setPendingLegacyBackup(encrypted ? null : parseBackup(text));
+      setBackupCredential('password');
+      setBackupSecret('');
+      setBackupDialog('import');
+    } catch (err: unknown) {
+      alert(`Import failed: ${getErrorMessage(err)}`);
+    }
   };
 
   // Create and open [SC]
@@ -374,7 +363,6 @@ export default function App() {
         salt: newSalt,
         wrappedMEKByPassword: newWrappedMEKByPassword,
         wrappedMEKBySeed: newWrappedMEKBySeed,
-        encryptedSignature: vaultConfig.encryptedSignature,
       });
 
       setMasterKey(mek);
@@ -456,14 +444,15 @@ export default function App() {
       });
 
       const encryptedPayload = await encryptData(canonicalEntry, masterKey);
+      const now = Date.now();
       await db.entries.add({
         title: entryTitle,
         category: 'Iterative Codex Entry',
         tags: ['codex', 'iterative', 'encrypted'],
         isEncrypted: true,
         content: encryptedPayload,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
+        createdAt: now,
+        updatedAt: now,
       });
 
       setEntryTitle('');
@@ -480,7 +469,7 @@ export default function App() {
 
   // Decrypt one entry for display on demand
   const handleDecryptRecord = async (entry: EntryRecord) => {
-    if (!entry.id || !masterKey || typeof entry.content !== 'string') return;
+    if (!entry.id || !masterKey) return;
     try {
       const plaintext = await decryptData(entry.content, masterKey);
       setDecryptedRecords((prev) => ({ ...prev, [entry.id!]: plaintext }));
@@ -499,7 +488,7 @@ export default function App() {
             <p className="text-xs text-gray-400">The Application</p>
           </div>
           {status && (
-            <span className="text-xs bg-[#141822] px-3 py-1.5 rounded border border-[#252b3b] font-mono hidden sm:inline-block">
+            <span className="text-xs bg-[#141822] px-3 py-1.5 rounded border border-[#252b3b] font-mono max-w-full break-words">
               {status}
             </span>
           )}
@@ -528,13 +517,7 @@ export default function App() {
           {masterKey && (
             <button
               onClick={() => {
-                setMasterKey(null);
-                setCitizenInitials('');
-                setInitialsDraft('');
-                setCurrentPasswordForChange('');
-                setReplacementPassword('');
-                setConfirmReplacementPassword('');
-                setPasswordForSignature('');
+                clearSession();
                 setStatus('[SC] locked.');
               }}
               className="app-header__action text-xs bg-[#1c2230] hover:bg-[#283144] text-gray-300 rounded border border-[#2e374d] transition"
@@ -819,28 +802,20 @@ export default function App() {
 
             <div className="space-y-3">
               <div className="flex flex-col gap-2 sm:flex-row">
-                <button
-                  type="button"
-                  onClick={() => setEntrySequence('A')}
-                  className={`flex-1 rounded border px-3 py-2 text-left text-xs uppercase tracking-[0.2em] transition ${
-                    entrySequence === 'A'
-                      ? 'border-[#E5C158] bg-[#1d1a10] text-[#E5C158]'
-                      : 'border-[#2b3245] bg-[#090a0f] text-gray-300'
-                  }`}
-                >
-                  Sequence A | Reactive Template
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setEntrySequence('B')}
-                  className={`flex-1 rounded border px-3 py-2 text-left text-xs uppercase tracking-[0.2em] transition ${
-                    entrySequence === 'B'
-                      ? 'border-[#E5C158] bg-[#1d1a10] text-[#E5C158]'
-                      : 'border-[#2b3245] bg-[#090a0f] text-gray-300'
-                  }`}
-                >
-                  Sequence B | Proactive Template
-                </button>
+                {(['A', 'B'] as const).map((sequence) => (
+                  <button
+                    key={sequence}
+                    type="button"
+                    onClick={() => setEntrySequence(sequence)}
+                    className={`flex-1 rounded border px-3 py-2 text-left text-xs uppercase tracking-[0.2em] transition ${
+                      entrySequence === sequence
+                        ? 'border-[#E5C158] bg-[#1d1a10] text-[#E5C158]'
+                        : 'border-[#2b3245] bg-[#090a0f] text-gray-300'
+                    }`}
+                  >
+                    {getSequenceLabel(sequence)}
+                  </button>
+                ))}
               </div>
 
               <div className="rounded border border-[#2b3245] bg-[#090a0f] p-3 space-y-2">
@@ -852,50 +827,22 @@ export default function App() {
             </div>
 
             <div className="grid gap-4 md:grid-cols-3">
-              <label className="space-y-2 text-xs text-gray-300">
-                <span className="font-bold uppercase text-[#E5C158]">The Catalyst</span>
-                <span className="block text-[10px] uppercase tracking-[0.15em] text-gray-400">
-                  {sequenceGuidance.catalyst}
-                </span>
-                <span className="block text-[10px] leading-relaxed text-gray-500">{sequenceGuidance.catalystExecution}</span>
-                <textarea
-                  rows={4}
-                  placeholder="The Catalyst"
-                  value={entryCatalyst}
-                  onChange={(e) => setEntryCatalyst(e.target.value)}
-                  className="w-full bg-[#090a0f] border border-[#2b3245] rounded p-2 text-sm text-white"
-                />
-              </label>
-
-              <label className="space-y-2 text-xs text-gray-300">
-                <span className="font-bold uppercase text-[#E5C158]">The Friction</span>
-                <span className="block text-[10px] uppercase tracking-[0.15em] text-gray-400">
-                  {sequenceGuidance.friction}
-                </span>
-                <span className="block text-[10px] leading-relaxed text-gray-500">{sequenceGuidance.frictionExecution}</span>
-                <textarea
-                  rows={4}
-                  placeholder="The Friction"
-                  value={entryFriction}
-                  onChange={(e) => setEntryFriction(e.target.value)}
-                  className="w-full bg-[#090a0f] border border-[#2b3245] rounded p-2 text-sm text-white"
-                />
-              </label>
-
-              <label className="space-y-2 text-xs text-gray-300">
-                <span className="font-bold uppercase text-[#E5C158]">The Parameter</span>
-                <span className="block text-[10px] uppercase tracking-[0.15em] text-gray-400">
-                  {sequenceGuidance.parameter}
-                </span>
-                <span className="block text-[10px] leading-relaxed text-gray-500">{sequenceGuidance.parameterExecution}</span>
-                <textarea
-                  rows={4}
-                  placeholder="The Parameter"
-                  value={entryParameter}
-                  onChange={(e) => setEntryParameter(e.target.value)}
-                  className="w-full bg-[#090a0f] border border-[#2b3245] rounded p-2 text-sm text-white"
-                />
-              </label>
+              {entryFields.map(({ label, prompt, execution, value, onChange }) => (
+                <label key={label} className="space-y-2 text-xs text-gray-300">
+                  <span className="font-bold uppercase text-[#E5C158]">{label}</span>
+                  <span className="block text-[10px] uppercase tracking-[0.15em] text-gray-400">
+                    {sequenceGuidance[prompt]}
+                  </span>
+                  <span className="block text-[10px] leading-relaxed text-gray-500">{sequenceGuidance[execution]}</span>
+                  <textarea
+                    rows={4}
+                    placeholder={label}
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                    className="w-full bg-[#090a0f] border border-[#2b3245] rounded p-2 text-sm text-white"
+                  />
+                </label>
+              ))}
             </div>
 
             <div className="space-y-2">
@@ -913,7 +860,7 @@ export default function App() {
 
             <div className="flex items-center justify-between gap-3">
               <div className="w-full max-w-xs rounded border border-[#2b3245] bg-[#090a0f] px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-[#E5C158]">
-                [PROTOCOL 03: ITERATIVE FORMULA]
+                [{ITERATIVE_FORMULA_PROTOCOL}]
               </div>
 
               <button type="submit" className="bg-[#E5C158] text-[#090a0f] font-semibold text-xs px-4 py-2 rounded">

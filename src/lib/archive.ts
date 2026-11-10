@@ -57,7 +57,7 @@ function nodeText(node: RootContent | Root): string {
 const normalize = (text: string) => text.replace(ZERO_WIDTH, '').replace(/\s+/g, ' ').trim();
 
 /** First page number for each printed identifier such as OC-C-001. */
-export function firstPageOfEachId(pages: ArchivePage[]): Record<string, number> {
+function firstPageOfEachId(pages: ArchivePage[]): Record<string, number> {
   const first: Record<string, number> = {};
   for (const page of pages) if (page.id && !(page.id in first)) first[page.id] = page.n;
   return first;

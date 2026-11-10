@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest';
+import { BIP39_WORDLIST } from './bip39Words';
 import {
   decryptData,
   encryptData,
@@ -16,6 +17,10 @@ beforeAll(() => {
 });
 
 describe('recovery phrase', () => {
+  it('uses the full 2048-word list', () => {
+    expect(BIP39_WORDLIST).toHaveLength(2048);
+  });
+
   it('generates 24 words that pass validation', async () => {
     const seed = await generateBip39Seed();
     expect(seed).toHaveLength(24);

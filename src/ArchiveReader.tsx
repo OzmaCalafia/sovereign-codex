@@ -163,18 +163,18 @@ export default function ArchiveReader({ onBeginEntry }: { onBeginEntry: () => vo
   }, [mode, archiveText, pages]);
 
   // Opens the Printed view at a page.
-  const openPrinted = (n: number) => {
+  const openPrinted = useCallback((n: number) => {
     setPrintedPage(n);
     setMode('printed');
     requestAnimationFrame(() => viewerTop.current?.scrollIntoView({ block: 'start' }));
-  };
+  }, []);
 
   const showReturn = mode === 'text' ? pastTopology : printedPage !== TOPOLOGY_PAGE;
   const returnToTopology = () => goTo(`page-${TOPOLOGY_PAGE}`);
   const effectiveWidth = Math.min(settings.width, maxWidth);
 
-  // Markdown element styling plus the custom term-link, term-def and page-break elements.
-  const components: Components = {
+  // Stable identity: new component functions each render would remount the whole article.
+  const components = useMemo<Components>(() => ({
     h1: ({ children, node, ...props }) => { void node; return <h1 className="mb-5 mt-10 border-b border-[#303642] pb-3 font-bold text-[#E5C158]" {...props}>{children}</h1>; },
     h2: ({ children, node, ...props }) => { void node; return <h2 className="mb-4 mt-10 border-b border-[#303642] pb-2 font-bold text-[#E5C158]" {...props}>{children}</h2>; },
     h3: ({ children, node, ...props }) => { void node; return <h3 className="mb-3 mt-7 font-semibold text-[#E5C158]" {...props}>{children}</h3>; },
@@ -215,7 +215,8 @@ export default function ArchiveReader({ onBeginEntry }: { onBeginEntry: () => vo
         );
       },
     } as unknown as Components),
-  };
+  }), [goTo, openPrinted, pages]);
+  const archiveValue = useMemo(() => ({ terms, pages, goTo }), [terms, pages, goTo]);
 
   // Link to the Write tab shown at the end of the Archive.
   const codexCta = (
@@ -225,7 +226,7 @@ export default function ArchiveReader({ onBeginEntry }: { onBeginEntry: () => vo
   );
 
   return (
-    <ArchiveContext.Provider value={{ terms, pages, goTo }}>
+    <ArchiveContext.Provider value={archiveValue}>
       <section ref={readerSection} className="sc-cover-frame sc-cover-frame--read space-y-5 p-4" aria-labelledby="archive-reader-title">
         <span ref={characterMeasure} aria-hidden="true" className="reader-character-measure" style={{ fontSize: `${measurementFontSize}px` }}>0</span>
         <header className="space-y-3 border-b border-[#202530] pb-4">
