@@ -1,5 +1,11 @@
 name = "sovereign-codex"
 compatibility_date = "2026-11-01"
+workers_dev = false
+preview_urls = false
+
+[[routes]]
+pattern = "ocsystem.org"
+custom_domain = true
 
 [assets]
 directory = "./dist"
