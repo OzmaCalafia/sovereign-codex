@@ -472,7 +472,7 @@ export default function App() {
       setEntryFriction('');
       setEntryParameter('');
       setEntryNotes('');
-      setStatus('[SC] entry saved to the encrypted archive.');
+      setStatus('[SC] entry saved.');
     } catch (err: unknown) {
       setStatus(`Save failed: ${getErrorMessage(err)}`);
     }
@@ -490,7 +490,7 @@ export default function App() {
   };
 
   return (
-    <main className={`min-h-screen bg-[#090a0f] text-[#e0e6ed] p-6 mx-auto space-y-8 font-sans ${activeSection === 'archive' ? 'max-w-none' : 'max-w-4xl'}`}>
+    <main className="min-h-screen bg-[#090a0f] text-[#e0e6ed] p-6 mx-auto space-y-8 font-sans max-w-4xl">
       {/* Brand, backup, and session controls */}
       <header className="app-header space-y-3 border-b border-[#202530] pb-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
